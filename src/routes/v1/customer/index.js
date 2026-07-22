@@ -1,0 +1,46 @@
+const { Router } = require('express');
+const authRoutes = require('./auth.routes');
+const cartRoutes = require('./cart.routes');
+const checkoutRoutes = require('./checkout.routes');
+const orderRoutes = require('./order.routes');
+const bannerRoutes = require('./banner.routes');
+const cmsPageRoutes = require('./cmsPage.routes');
+const offerRoutes = require('./offer.routes');
+const reviewRoutes = require('./review.routes');
+const analyticsRoutes = require('./analytics.routes');
+const addressRoutes = require('./address.routes');
+const wishlistRoutes = require('./wishlist.routes');
+const productRoutes = require('./product.routes');
+const homeRoutes = require('./home.routes');
+const couponRoutes = require('./coupon.routes');
+const backInStockRoutes = require('./backInStock.routes');
+const supportRoutes = require('./support.routes');
+const newsletterRoutes = require('./newsletter.routes');
+const referralRoutes = require('./referral.routes');
+const blogRoutes = require('./blog.routes');
+const accountRoutes = require('./account.routes');
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/cart', cartRoutes);
+router.use('/checkout', checkoutRoutes);
+router.use('/orders', orderRoutes);
+router.use('/banners', bannerRoutes);
+router.use('/cms-pages', cmsPageRoutes);
+router.use('/offers', offerRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/addresses', addressRoutes);
+router.use('/wishlist', wishlistRoutes);
+router.use('/products', productRoutes);
+router.use('/home', homeRoutes);
+router.use('/coupons', couponRoutes);
+router.use('/back-in-stock', backInStockRoutes);
+router.use('/support', supportRoutes);
+router.use('/newsletter', newsletterRoutes);
+router.use('/referral', referralRoutes);
+router.use('/blog', blogRoutes);
+router.use('/account', accountRoutes);
+
+module.exports = router;

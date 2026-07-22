@@ -1,0 +1,46 @@
+const { Router } = require('express');
+const authRoutes = require('./auth.routes');
+const staffRoutes = require('./staff.routes');
+const categoryRoutes = require('./category.routes');
+const productRoutes = require('./product.routes');
+const inventoryRoutes = require('./inventory.routes');
+const razorpayConfigRoutes = require('./razorpayConfig.routes');
+const brevoConfigRoutes = require('./brevoConfig.routes');
+const orderRoutes = require('./order.routes');
+const subscriptionBillingRoutes = require('./subscriptionBilling.routes');
+const storeSettingsRoutes = require('./storeSettings.routes');
+const reportsRoutes = require('./reports.routes');
+const bannerRoutes = require('./banner.routes');
+const cmsPageRoutes = require('./cmsPage.routes');
+const couponRoutes = require('./coupon.routes');
+const offerRoutes = require('./offer.routes');
+const reviewRoutes = require('./review.routes');
+const analyticsRoutes = require('./analytics.routes');
+const supportRoutes = require('./support.routes');
+const blogRoutes = require('./blog.routes');
+const newsletterRoutes = require('./newsletter.routes');
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/staff', staffRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/products', productRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/razorpay-config', razorpayConfigRoutes);
+router.use('/brevo-config', brevoConfigRoutes);
+router.use('/orders', orderRoutes);
+router.use('/subscription', subscriptionBillingRoutes);
+router.use('/store-settings', storeSettingsRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/banners', bannerRoutes);
+router.use('/cms-pages', cmsPageRoutes);
+router.use('/coupons', couponRoutes);
+router.use('/offers', offerRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/support', supportRoutes);
+router.use('/blog', blogRoutes);
+router.use('/newsletter', newsletterRoutes);
+
+module.exports = router;

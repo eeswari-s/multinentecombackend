@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: multitenant-ecommerce-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - fromGroup: multitenant-ecommerce-shared
+
+  - type: worker
+    name: multitenant-ecommerce-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node src/jobs/workers/index.js
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - fromGroup: multitenant-ecommerce-shared
