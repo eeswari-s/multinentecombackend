@@ -1,0 +1,10 @@
+{
+  "ignore": [
+    "logs/*",
+    "node_modules/*",
+    "tests/*",
+    ".git/*",
+    "coverage/*"
+  ],
+  "ext": "js,mjs,cjs,json"
+}
