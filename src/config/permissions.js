@@ -7,10 +7,17 @@
  * super_admin does not use this table — Super Admin routes are gated by
  * role alone (see rbac.js requireRole) since they operate through the
  * separate cross-tenant service layer, not tenant permissions.
+ *
+ * Platform-controlled areas (staff, branding, custom domain, payment/email
+ * provider config, blog, reports, analytics, and the product SEO/GST fields)
+ * are deliberately absent from every tenant-side role below — a tenant
+ * account can never hold them directly. Super Admin reaches them by using
+ * "Login As Client" (see rbac.js requirePermission's impersonation bypass),
+ * not through a permission grant here.
  */
 const ALL_CLIENT_ADMIN_PERMISSIONS = [
-  'staff:manage',
-  'settings:manage',
+  'settings:shipping',
+  'settings:subscription',
   'catalog:read',
   'catalog:write',
   'orders:read',
@@ -24,18 +31,16 @@ const ALL_CLIENT_ADMIN_PERMISSIONS = [
   'banners:write',
   'cms:write',
   'reviews:moderate',
-  'reports:read',
   'notifications:manage',
   'activityLogs:read',
   'support:manage',
-  'content:manage',
 ];
 
 const ROLE_PERMISSIONS = {
   owner: ALL_CLIENT_ADMIN_PERMISSIONS,
 
   manager: ALL_CLIENT_ADMIN_PERMISSIONS.filter(
-    (perm) => perm !== 'staff:manage' && perm !== 'settings:manage'
+    (perm) => perm !== 'settings:shipping' && perm !== 'settings:subscription'
   ),
 
   support_staff: [
@@ -44,7 +49,6 @@ const ROLE_PERMISSIONS = {
     'orders:write',
     'customers:read',
     'reviews:moderate',
-    'reports:read',
     'support:manage',
   ],
 };

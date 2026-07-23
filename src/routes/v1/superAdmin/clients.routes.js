@@ -8,6 +8,7 @@ const featureFlagsController = require('../../../controllers/superAdmin/featureF
 const {
   createClientSchema,
   updateClientSchema,
+  resetOwnerPasswordSchema,
   setClientStatusSchema,
   listClientsQuerySchema,
   clientIdParamsSchema,
@@ -36,7 +37,7 @@ router.patch(
 );
 router.post(
   '/:tenantId/reset-owner-password',
-  validateRequest({ params: clientIdParamsSchema }),
+  validateRequest({ params: clientIdParamsSchema, body: resetOwnerPasswordSchema }),
   controller.resetOwnerPassword
 );
 router.post('/:tenantId/login-as', validateRequest({ params: clientIdParamsSchema }), controller.loginAs);

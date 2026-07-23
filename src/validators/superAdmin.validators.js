@@ -35,7 +35,14 @@ const createClientSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Subdomain may only contain lowercase letters, numbers and hyphens'),
   ownerName: z.string().trim().min(1).max(120),
   ownerEmail: emailSchema,
-  ownerPassword: z.string().min(8).optional(),
+  // Required: Super Admin is the only one who ever creates a Client Admin
+  // account, so the login credential the client will actually use has to be
+  // set explicitly here rather than auto-generated and relayed separately.
+  ownerPassword: z.string().min(8),
+});
+
+const resetOwnerPasswordSchema = z.object({
+  newPassword: z.string().min(8),
 });
 
 const updateClientSchema = z.object({
@@ -92,6 +99,7 @@ const userIdParamsSchema = z.object({
 module.exports = {
   createClientSchema,
   updateClientSchema,
+  resetOwnerPasswordSchema,
   setClientStatusSchema,
   listClientsQuerySchema,
   clientIdParamsSchema,

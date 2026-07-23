@@ -83,6 +83,12 @@ beforeAll(async () => {
   const passwordHash = await hashPassword('Password123!');
   await User.create({ role: 'owner', tenantId: acme._id, name: 'Acme Owner', email: 'owner@acme.test', passwordHash });
   await User.create({ role: 'owner', tenantId: globex._id, name: 'Globex Owner', email: 'owner@globex.test', passwordHash });
+  await User.create({
+    role: 'super_admin',
+    name: 'Root Admin',
+    email: 'root@platform.test',
+    passwordHash: await hashPassword('Password123!'),
+  });
 
   app = require('../src/app');
 
@@ -92,9 +98,23 @@ beforeAll(async () => {
     .send({ email: 'owner@acme.test', password: 'Password123!' });
   ownerToken = ownerLogin.body.data.accessToken;
 
+  const rootToken = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Razorpay config is platform-controlled (see rbac.js / permissions.js) —
+  // only settable via Super Admin's "Login As Client" impersonation.
+  const impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${acmeId}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
+  ).body.data.accessToken;
+
   await request(app)
     .put('/api/v1/client-admin/razorpay-config')
-    .set('Authorization', `Bearer ${ownerToken}`)
+    .set('Authorization', `Bearer ${impersonationToken}`)
     .send({ keyId: 'rzp_test_fake', keySecret: RZP_KEY_SECRET, webhookSecret: RZP_WEBHOOK_SECRET });
 });
 

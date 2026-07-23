@@ -15,6 +15,7 @@ let runAcrossAllTenants;
 
 let tenantId;
 let ownerToken;
+let impersonationToken;
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
@@ -47,6 +48,20 @@ beforeAll(async () => {
       .set('Host', 'acme.myplatform.test')
       .send({ email: 'owner@acme.test', password: 'Password123!' })
   ).body.data.accessToken;
+
+  const rootToken = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Brevo config is platform-controlled (see rbac.js / permissions.js) —
+  // only reachable via Super Admin's "Login As Client" impersonation.
+  impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${tenantId}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
+  ).body.data.accessToken;
 });
 
 afterAll(async () => {
@@ -56,6 +71,10 @@ afterAll(async () => {
 
 function admin(req) {
   return req.set('Authorization', `Bearer ${ownerToken}`);
+}
+
+function impersonating(req) {
+  return req.set('Authorization', `Bearer ${impersonationToken}`);
 }
 
 async function peekVerificationValue(persona, purpose, subjectId) {
@@ -221,7 +240,7 @@ describe('Admin forgot/reset password', () => {
 
 describe('Client Admin Brevo configuration', () => {
   test('saves and reads back a masked config', async () => {
-    const saveRes = await admin(request(app).put('/api/v1/client-admin/brevo-config')).send({
+    const saveRes = await impersonating(request(app).put('/api/v1/client-admin/brevo-config')).send({
       apiKey: 'xkeysib-fake-brevo-key-1234',
       senderName: 'Acme Support',
       senderEmail: 'support@acme.test',
@@ -230,7 +249,7 @@ describe('Client Admin Brevo configuration', () => {
     expect(saveRes.body.data.apiKeyPreview).toMatch(/\*+1234$/);
     expect(saveRes.body.data.encryptedApiKey).toBeUndefined();
 
-    const getRes = await admin(request(app).get('/api/v1/client-admin/brevo-config'));
+    const getRes = await impersonating(request(app).get('/api/v1/client-admin/brevo-config'));
     expect(getRes.status).toBe(200);
     expect(getRes.body.data.senderEmail).toBe('support@acme.test');
   });

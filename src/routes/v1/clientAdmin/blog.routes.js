@@ -13,6 +13,8 @@ const {
 
 const router = Router();
 
+// Blog is platform-controlled — only reachable via Super Admin's "Login As
+// Client" impersonation (see rbac.js requirePermission's bypass).
 router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('content:manage'));
 
 router.post('/', validateRequest({ body: createBlogPostSchema }), controller.create);

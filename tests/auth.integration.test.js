@@ -185,7 +185,7 @@ describe('Client Admin auth (tenant-scoped)', () => {
     expect(res.body.data.user.tenantId).toBe(String(globex._id));
   });
 
-  test('owner can access a staff-management-gated route, support_staff cannot', async () => {
+  test('staff:manage is platform-controlled: only Super Admin impersonation reaches it, not the owner or support_staff directly', async () => {
     const ownerLogin = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
@@ -194,7 +194,7 @@ describe('Client Admin auth (tenant-scoped)', () => {
     const ownerRes = await request(app)
       .get('/api/v1/__test/staff-only')
       .set('Authorization', `Bearer ${ownerLogin.body.data.accessToken}`);
-    expect(ownerRes.status).toBe(200);
+    expect(ownerRes.status).toBe(403);
 
     const staffLogin = await request(app)
       .post('/api/v1/client-admin/auth/login')
@@ -205,6 +205,20 @@ describe('Client Admin auth (tenant-scoped)', () => {
       .get('/api/v1/__test/staff-only')
       .set('Authorization', `Bearer ${staffLogin.body.data.accessToken}`);
     expect(staffRes.status).toBe(403);
+
+    const rootLogin = await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' });
+    const impersonationToken = (
+      await request(app)
+        .post(`/api/v1/super-admin/clients/${acme._id}/login-as`)
+        .set('Authorization', `Bearer ${rootLogin.body.data.accessToken}`)
+    ).body.data.accessToken;
+
+    const impersonatedRes = await request(app)
+      .get('/api/v1/__test/staff-only')
+      .set('Authorization', `Bearer ${impersonationToken}`);
+    expect(impersonatedRes.status).toBe(200);
   });
 
   test('a customer-persona token cannot access an admin-persona route', async () => {

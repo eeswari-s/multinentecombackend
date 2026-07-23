@@ -5,7 +5,7 @@ const tenantManagementService = require('../../services/superAdmin/tenantManagem
 const actorFrom = (req) => ({ userId: req.auth.userId, email: req.auth.email });
 
 const create = asyncHandler(async (req, res) => {
-  const { tenant, owner, temporaryPassword } = await tenantManagementService.createClient({
+  const { tenant, owner } = await tenantManagementService.createClient({
     ...req.body,
     actor: actorFrom(req),
   });
@@ -13,7 +13,7 @@ const create = asyncHandler(async (req, res) => {
   sendSuccess(res, {
     statusCode: 201,
     message: 'Client created',
-    data: { tenant, owner: owner.toJSON(), temporaryPassword },
+    data: { tenant, owner: owner.toJSON() },
   });
 });
 
@@ -48,6 +48,7 @@ const setStatus = asyncHandler(async (req, res) => {
 const resetOwnerPassword = asyncHandler(async (req, res) => {
   const result = await tenantManagementService.resetOwnerPassword({
     tenantId: req.params.tenantId,
+    newPassword: req.body.newPassword,
     actor: actorFrom(req),
   });
   sendSuccess(res, { message: 'Owner password reset', data: result });

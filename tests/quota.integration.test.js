@@ -16,6 +16,7 @@ let uploadService;
 let tenantId;
 let rootAdminToken;
 let ownerToken;
+let impersonationToken;
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
@@ -51,6 +52,14 @@ beforeAll(async () => {
       .set('Host', 'acme.myplatform.test')
       .send({ email: 'owner@acme.test', password: 'Password123!' })
   ).body.data.accessToken;
+
+  // Staff management is platform-controlled (see rbac.js / permissions.js)
+  // — only reachable via Super Admin's "Login As Client" impersonation.
+  impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${tenantId}/login-as`)
+      .set('Authorization', `Bearer ${rootAdminToken}`)
+  ).body.data.accessToken;
 });
 
 afterAll(async () => {
@@ -63,6 +72,10 @@ function root(req) {
 }
 function owner(req) {
   return req.set('Authorization', `Bearer ${ownerToken}`);
+}
+
+function impersonating(req) {
+  return req.set('Authorization', `Bearer ${impersonationToken}`);
 }
 
 async function assignPlanWithLimits(limits) {
@@ -138,7 +151,9 @@ describe('Plan-tier quota enforcement', () => {
   test('staff quota blocks inviting past the plan limit', async () => {
     await assignPlanWithLimits({ maxStaffUsers: 1 });
 
-    const firstRes = await owner(request(app).post('/api/v1/client-admin/staff')).send({
+    // Staff management is platform-controlled — invited via Super Admin's
+    // "Login As Client" impersonation, not the owner's own login.
+    const firstRes = await impersonating(request(app).post('/api/v1/client-admin/staff')).send({
       name: 'Staff One',
       email: 'staff-one@acme.test',
       role: 'manager',
@@ -146,7 +161,7 @@ describe('Plan-tier quota enforcement', () => {
     });
     expect(firstRes.status).toBe(201);
 
-    const secondRes = await owner(request(app).post('/api/v1/client-admin/staff')).send({
+    const secondRes = await impersonating(request(app).post('/api/v1/client-admin/staff')).send({
       name: 'Staff Two',
       email: 'staff-two@acme.test',
       role: 'manager',

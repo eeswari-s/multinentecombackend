@@ -1,7 +1,41 @@
+const sharp = require('sharp');
 const cloudinary = require('./client');
 const { Tenant } = require('../../models/tenant.model');
 const requestContext = require('../../utils/requestContext');
 const ApiError = require('../../utils/ApiError');
+
+const MAX_DIMENSION_PX = 1920;
+
+/**
+ * Downscales oversized photos and re-encodes at quality 80 before anything
+ * reaches Cloudinary — phone camera photos routinely arrive at 4000px+ and
+ * several MB, which burns through a tenant's storage quota (see
+ * assertStorageQuota below) for no visible gain at typical storefront
+ * display sizes. Format is auto-detected (not passed in) so a transparent
+ * PNG is re-encoded as PNG, never flattened to JPEG and losing its alpha
+ * channel. Falls back to the original buffer if sharp can't parse it (e.g.
+ * a corrupt file, or a non-image such as a generated PDF) so upload doesn't
+ * hard-fail on this alone.
+ */
+async function compressImage(buffer) {
+  try {
+    const image = sharp(buffer);
+    const { format } = await image.metadata();
+    const pipeline = image.resize({
+      width: MAX_DIMENSION_PX,
+      height: MAX_DIMENSION_PX,
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+
+    if (format === 'png') return await pipeline.png({ quality: 80, compressionLevel: 8 }).toBuffer();
+    if (format === 'webp') return await pipeline.webp({ quality: 80 }).toBuffer();
+    if (format === 'jpeg' || format === 'jpg') return await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+    return buffer; // not a recognized image format (e.g. raw PDF bytes) — leave untouched
+  } catch {
+    return buffer;
+  }
+}
 
 /**
  * Storage quota is checked against the file's byte size BEFORE it's
@@ -43,14 +77,15 @@ async function adjustTenantStorage(bytesDelta) {
  * generated PDFs (invoices, packing slips, reports).
  */
 async function uploadBuffer(buffer, folder, resourceType = 'image') {
-  await assertStorageQuota(buffer.length);
+  const outgoing = resourceType === 'image' ? await compressImage(buffer) : buffer;
+  await assertStorageQuota(outgoing.length);
 
   const result = await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream({ folder, resource_type: resourceType }, (err, uploaded) => {
       if (err) return reject(err);
       resolve(uploaded);
     });
-    stream.end(buffer);
+    stream.end(outgoing);
   });
 
   await adjustTenantStorage(result.bytes);

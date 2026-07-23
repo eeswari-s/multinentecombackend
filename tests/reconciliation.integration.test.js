@@ -42,6 +42,7 @@ let runAcrossAllTenants;
 
 let acme;
 let ownerToken;
+let impersonationToken;
 const RZP_KEY_SECRET = 'fake_test_key_secret';
 const RZP_WEBHOOK_SECRET = 'fake_test_webhook_secret';
 
@@ -75,9 +76,24 @@ beforeAll(async () => {
       .send({ email: 'owner@acme.test', password: 'Password123!' })
   ).body.data.accessToken;
 
+  const rootTokenForSetup = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Razorpay config and the reconciliation report are platform-controlled
+  // (see rbac.js / permissions.js) — only reachable via Super Admin's
+  // "Login As Client" impersonation.
+  impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${acme._id}/login-as`)
+      .set('Authorization', `Bearer ${rootTokenForSetup}`)
+  ).body.data.accessToken;
+
   await request(app)
     .put('/api/v1/client-admin/razorpay-config')
-    .set('Authorization', `Bearer ${ownerToken}`)
+    .set('Authorization', `Bearer ${impersonationToken}`)
     .send({ keyId: 'rzp_test_fake', keySecret: RZP_KEY_SECRET, webhookSecret: RZP_WEBHOOK_SECRET });
 });
 
@@ -196,7 +212,9 @@ describe('Flow B: refunds and reconciliation', () => {
   });
 
   test('the reconciliation report shows captured and refunded totals for this tenant', async () => {
-    const res = await owner(request(app).get('/api/v1/client-admin/reports/reconciliation'));
+    const res = await request(app)
+      .get('/api/v1/client-admin/reports/reconciliation')
+      .set('Authorization', `Bearer ${impersonationToken}`);
     expect(res.status).toBe(200);
     expect(res.body.data.ordersCount).toBeGreaterThanOrEqual(2);
     expect(res.body.data.refundsCount).toBeGreaterThanOrEqual(2);

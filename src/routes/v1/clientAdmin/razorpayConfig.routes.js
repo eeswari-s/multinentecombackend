@@ -8,7 +8,7 @@ const { saveRazorpayConfigSchema } = require('../../../validators/razorpayConfig
 
 const router = Router();
 
-router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('settings:manage'));
+router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('settings:payment'));
 
 router.put('/', validateRequest({ body: saveRazorpayConfigSchema }), controller.save);
 router.get('/', controller.get);

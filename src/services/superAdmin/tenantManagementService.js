@@ -11,10 +11,6 @@ const platformNotificationService = require('./platformNotificationService');
 const tenantOnboardingService = require('./tenantOnboardingService');
 const ApiError = require('../../utils/ApiError');
 
-function generateTemporaryPassword() {
-  return crypto.randomBytes(9).toString('base64url');
-}
-
 async function createClient({
   businessName,
   contactEmail,
@@ -45,8 +41,7 @@ async function createClient({
     subscription: { trialEndsAt },
   });
 
-  const temporaryPassword = ownerPassword || generateTemporaryPassword();
-  const passwordHash = await hashPassword(temporaryPassword);
+  const passwordHash = await hashPassword(ownerPassword);
 
   const owner = await User.create({
     role: 'owner',
@@ -74,10 +69,7 @@ async function createClient({
 
   await tenantOnboardingService.provisionDefaults(tenant);
 
-  // Only surfaced once, in this response — the caller (Super Admin) is
-  // responsible for relaying it to the client since email delivery isn't
-  // wired into this flow.
-  return { tenant, owner, temporaryPassword: ownerPassword ? null : temporaryPassword };
+  return { tenant, owner };
 }
 
 async function listClients({ page = 1, limit = 20, status }) {
@@ -131,12 +123,11 @@ async function setClientStatus({ tenantId, status, actor }) {
   return tenant;
 }
 
-async function resetOwnerPassword({ tenantId, actor }) {
+async function resetOwnerPassword({ tenantId, newPassword, actor }) {
   const owner = await User.findOne({ tenantId, role: 'owner' });
   if (!owner) throw ApiError.notFound('No owner account found for this client');
 
-  const temporaryPassword = generateTemporaryPassword();
-  owner.passwordHash = await hashPassword(temporaryPassword);
+  owner.passwordHash = await hashPassword(newPassword);
   await owner.save();
 
   await refreshTokenStore.revokeAllDevices({ persona: 'admin', userId: String(owner._id) });
@@ -149,7 +140,7 @@ async function resetOwnerPassword({ tenantId, actor }) {
     targetUserId: owner._id,
   });
 
-  return { ownerEmail: owner.email, temporaryPassword };
+  return { ownerEmail: owner.email };
 }
 
 async function loginAsClient({ tenantId, actor }) {

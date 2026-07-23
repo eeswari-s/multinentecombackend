@@ -12,6 +12,9 @@ const {
 
 const router = Router();
 
+// Staff management is platform-controlled — a tenant's own login never has
+// 'staff:manage'; only Super Admin's "Login As Client" impersonation (see
+// rbac.js requirePermission) can reach these routes.
 router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('staff:manage'));
 
 router.post('/', validateRequest({ body: inviteStaffSchema }), controller.invite);

@@ -48,30 +48,41 @@ function asRoot(req) {
 
 describe('Super Admin: client management', () => {
   let tenantId;
-  let ownerTempPassword;
+  const ownerPassword = 'OwnerPass123!';
+  let currentOwnerPassword = ownerPassword;
 
-  test('creates a client (tenant + owner account)', async () => {
+  test('creates a client (tenant + owner account) with a Super-Admin-chosen login password', async () => {
     const res = await asRoot(request(app).post('/api/v1/super-admin/clients')).send({
       businessName: 'Acme Foods',
       contactEmail: 'contact@acme.test',
       subdomain: 'acme',
       ownerName: 'Acme Owner',
       ownerEmail: 'owner@acme.test',
+      ownerPassword,
     });
 
     expect(res.status).toBe(201);
     expect(res.body.data.tenant.domain.subdomain).toBe('acme');
-    expect(res.body.data.temporaryPassword).toBeTruthy();
 
     tenantId = res.body.data.tenant._id;
-    ownerTempPassword = res.body.data.temporaryPassword;
+  });
+
+  test('rejects client creation without an explicit owner password', async () => {
+    const res = await asRoot(request(app).post('/api/v1/super-admin/clients')).send({
+      businessName: 'No Password Co',
+      contactEmail: 'contact@nopassword.test',
+      subdomain: 'nopassword',
+      ownerName: 'No Password Owner',
+      ownerEmail: 'owner@nopassword.test',
+    });
+    expect(res.status).toBe(400);
   });
 
   test('onboarding automation gives the new tenant a starter category and default CMS pages', async () => {
     const loginRes = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: ownerPassword });
     const token = loginRes.body.data.accessToken;
 
     const categoriesRes = await request(app)
@@ -94,15 +105,16 @@ describe('Super Admin: client management', () => {
       subdomain: 'acme',
       ownerName: 'X',
       ownerEmail: 'x-owner@acme.test',
+      ownerPassword: 'ClonePass123!',
     });
     expect(res.status).toBe(409);
   });
 
-  test('the created owner can log in on the storefront subdomain with the temp password', async () => {
+  test('the created owner can log in on the storefront subdomain with the password Super Admin set', async () => {
     const res = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: ownerPassword });
 
     expect(res.status).toBe(200);
     expect(res.body.data.user.tenantId).toBe(tenantId);
@@ -112,7 +124,7 @@ describe('Super Admin: client management', () => {
     const ownerLogin = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: currentOwnerPassword });
 
     const res = await request(app)
       .get('/api/v1/super-admin/clients')
@@ -138,7 +150,7 @@ describe('Super Admin: client management', () => {
     const loginRes = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: currentOwnerPassword });
     expect(loginRes.status).toBe(403);
   });
 
@@ -150,28 +162,33 @@ describe('Super Admin: client management', () => {
     const loginRes = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: currentOwnerPassword });
     expect(loginRes.status).toBe(200);
   });
 
-  test('resets the owner password and revokes their existing sessions', async () => {
+  test('rejects a password reset without an explicit new password', async () => {
+    const res = await asRoot(request(app).post(`/api/v1/super-admin/clients/${tenantId}/reset-owner-password`));
+    expect(res.status).toBe(400);
+  });
+
+  test('resets the owner password to a Super-Admin-chosen value and revokes their existing sessions', async () => {
     const res = await asRoot(
       request(app).post(`/api/v1/super-admin/clients/${tenantId}/reset-owner-password`)
-    );
+    ).send({ newPassword: 'ResetByAdmin123!' });
     expect(res.status).toBe(200);
-    expect(res.body.data.temporaryPassword).toBeTruthy();
+    expect(res.body.data.ownerEmail).toBe('owner@acme.test');
 
     const oldPasswordLogin = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: currentOwnerPassword });
     expect(oldPasswordLogin.status).toBe(401);
 
-    ownerTempPassword = res.body.data.temporaryPassword;
+    currentOwnerPassword = 'ResetByAdmin123!';
     const newPasswordLogin = await request(app)
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
-      .send({ email: 'owner@acme.test', password: ownerTempPassword });
+      .send({ email: 'owner@acme.test', password: currentOwnerPassword });
     expect(newPasswordLogin.status).toBe(200);
   });
 
@@ -254,6 +271,7 @@ describe('Client Admin: tenant staff management (RBAC by permission)', () => {
   let tenantId;
   let ownerToken;
   let managerToken;
+  let impersonationToken;
 
   beforeAll(async () => {
     const createRes = await asRoot(request(app).post('/api/v1/super-admin/clients')).send({
@@ -271,12 +289,28 @@ describe('Client Admin: tenant staff management (RBAC by permission)', () => {
       .set('Host', 'globex.myplatform.test')
       .send({ email: 'owner@globex.test', password: 'OwnerPass123!' });
     ownerToken = ownerLogin.body.data.accessToken;
+
+    // Staff management is platform-controlled — a tenant's own owner login
+    // no longer has 'staff:manage' (see permissions.js); only Super Admin's
+    // "Login As Client" impersonation can invite/list staff on its behalf.
+    impersonationToken = (
+      await asRoot(request(app).post(`/api/v1/super-admin/clients/${tenantId}/login-as`))
+    ).body.data.accessToken;
   });
 
-  test('owner can invite a manager', async () => {
+  test("owner's own login can no longer invite staff directly", async () => {
     const res = await request(app)
       .post('/api/v1/client-admin/staff')
       .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Globex Manager', email: 'manager@globex.test', role: 'manager', password: 'ManagerPass123!' });
+
+    expect(res.status).toBe(403);
+  });
+
+  test('Super Admin impersonating the owner can invite a manager', async () => {
+    const res = await request(app)
+      .post('/api/v1/client-admin/staff')
+      .set('Authorization', `Bearer ${impersonationToken}`)
       .send({ name: 'Globex Manager', email: 'manager@globex.test', role: 'manager', password: 'ManagerPass123!' });
 
     expect(res.status).toBe(201);
@@ -290,7 +324,7 @@ describe('Client Admin: tenant staff management (RBAC by permission)', () => {
     managerToken = managerLogin.body.data.accessToken;
   });
 
-  test('manager cannot invite further staff (lacks staff:manage permission)', async () => {
+  test('manager cannot invite further staff (lacks staff:manage permission, even outside impersonation)', async () => {
     const res = await request(app)
       .post('/api/v1/client-admin/staff')
       .set('Authorization', `Bearer ${managerToken}`)
@@ -299,14 +333,13 @@ describe('Client Admin: tenant staff management (RBAC by permission)', () => {
     expect(res.status).toBe(403);
   });
 
-  test("the tenant-scoped staff list (owner-only) never includes another tenant's users", async () => {
+  test("the tenant-scoped staff list, viewed via impersonation, never includes another tenant's users", async () => {
     // resolveTenantFromAuth scopes strictly to the token's own tenantId
     // claim — there is no parameter an attacker could pass to view a
-    // different tenant's staff instead. Listing is gated by the same
-    // staff:manage permission as inviting, so only the owner can see it.
+    // different tenant's staff instead.
     const res = await request(app)
       .get('/api/v1/client-admin/staff')
-      .set('Authorization', `Bearer ${ownerToken}`);
+      .set('Authorization', `Bearer ${impersonationToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.every((u) => u.tenantId === tenantId)).toBe(true);
@@ -402,6 +435,7 @@ describe('Super Admin: platform settings', () => {
       subdomain: 'trialtest',
       ownerName: 'Trial Owner',
       ownerEmail: 'owner@trialtest.test',
+      ownerPassword: 'TrialOwnerPass123!',
     });
     expect(createRes.status).toBe(201);
     expect(createRes.body.data.tenant.subscription.trialEndsAt).toBeTruthy();

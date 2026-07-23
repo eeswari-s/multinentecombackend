@@ -33,6 +33,8 @@ let uploadService;
 let acme;
 let globex;
 let ownerToken;
+let impersonationToken;
+let globexImpersonationToken;
 let confirmedOrder;
 const generatedPublicIds = [];
 
@@ -66,6 +68,12 @@ beforeAll(async () => {
   const passwordHash = await hashPassword('Password123!');
   await User.create({ role: 'owner', tenantId: acme._id, name: 'Acme Owner', email: 'owner@acme.test', passwordHash });
   await User.create({ role: 'owner', tenantId: globex._id, name: 'Globex Owner', email: 'owner@globex.test', passwordHash });
+  await User.create({
+    role: 'super_admin',
+    name: 'Root Admin',
+    email: 'root@platform.test',
+    passwordHash: await hashPassword('Password123!'),
+  });
 
   app = require('../src/app');
 
@@ -74,6 +82,25 @@ beforeAll(async () => {
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
       .send({ email: 'owner@acme.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  const rootToken = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Reports/analytics are platform-controlled (see rbac.js / permissions.js)
+  // — only reachable via Super Admin's "Login As Client" impersonation.
+  impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${acme._id}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
+  ).body.data.accessToken;
+  globexImpersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${globex._id}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
   ).body.data.accessToken;
 
   // Build one real confirmed order via the full checkout flow (COD, no
@@ -140,6 +167,10 @@ function runAsGlobex(fn) {
 
 function admin(req) {
   return req.set('Authorization', `Bearer ${ownerToken}`);
+}
+
+function impersonating(req) {
+  return req.set('Authorization', `Bearer ${impersonationToken}`);
 }
 
 describe('PdfService — real rendering + Cloudinary upload', () => {
@@ -214,12 +245,12 @@ describe('PDF HTTP routes (queue mocked — see note above)', () => {
   }, 15000);
 
   test('generating an analytics report over HTTP returns the URL once the (mocked) worker completes', async () => {
-    const res = await admin(request(app).post('/api/v1/client-admin/reports/analytics'));
+    const res = await impersonating(request(app).post('/api/v1/client-admin/reports/analytics'));
     expect(res.status).toBe(200);
     expect(res.body.data.url).toBeDefined();
   }, 15000);
 
-  test('a manager without reports:read cannot generate reports', async () => {
+  test('reports are platform-controlled: neither the owner nor staff can reach them without impersonating', async () => {
     const passwordHash = await hashPassword('Password123!');
     await User.create({ role: 'support_staff', tenantId: acme._id, name: 'Support', email: 'support@acme.test', passwordHash });
     const staffLogin = await request(app)
@@ -227,26 +258,25 @@ describe('PDF HTTP routes (queue mocked — see note above)', () => {
       .set('Host', 'acme.myplatform.test')
       .send({ email: 'support@acme.test', password: 'Password123!' });
 
-    const res = await request(app)
+    const staffRes = await request(app)
       .post('/api/v1/client-admin/reports/sales')
       .set('Authorization', `Bearer ${staffLogin.body.data.accessToken}`);
-    expect(res.status).toBe(200); // support_staff DOES have reports:read per the permission table
+    expect(staffRes.status).toBe(403);
+
+    const ownerRes = await admin(request(app).post('/api/v1/client-admin/reports/sales'));
+    expect(ownerRes.status).toBe(403);
   });
 
   test('fetching a generated document by id is tenant-isolated over HTTP', async () => {
     const document = await runAsAcme(() => pdfService.generateDocument({ type: 'inventory_report', params: {} }));
     generatedPublicIds.push(document.publicId);
 
-    const ownerRes = await admin(request(app).get(`/api/v1/client-admin/reports/documents/${document._id}`));
+    const ownerRes = await impersonating(request(app).get(`/api/v1/client-admin/reports/documents/${document._id}`));
     expect(ownerRes.status).toBe(200);
 
-    const globexLogin = await request(app)
-      .post('/api/v1/client-admin/auth/login')
-      .set('Host', 'globex.myplatform.test')
-      .send({ email: 'owner@globex.test', password: 'Password123!' });
     const globexRes = await request(app)
       .get(`/api/v1/client-admin/reports/documents/${document._id}`)
-      .set('Authorization', `Bearer ${globexLogin.body.data.accessToken}`);
-    expect(globexRes.status).toBe(404);
+      .set('Authorization', `Bearer ${globexImpersonationToken}`);
+    expect(globexRes.status).toBe(404); // has reports:read via impersonation, but it's acme's document, not globex's
   }, 30000);
 });

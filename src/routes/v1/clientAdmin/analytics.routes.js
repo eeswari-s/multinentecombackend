@@ -8,6 +8,8 @@ const { analyticsQuerySchema } = require('../../../validators/analytics.validato
 
 const router = Router();
 
+// Analytics are platform-controlled — only reachable via Super Admin's
+// "Login As Client" impersonation (see rbac.js requirePermission's bypass).
 router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('reports:read'));
 
 router.get('/summary', validateRequest({ query: analyticsQuerySchema }), controller.getSummary);

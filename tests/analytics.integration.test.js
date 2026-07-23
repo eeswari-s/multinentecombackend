@@ -19,6 +19,7 @@ let computePeriodBounds;
 
 let tenant;
 let ownerToken;
+let impersonationToken;
 let customerToken;
 let productId;
 let periodStart;
@@ -47,6 +48,7 @@ beforeAll(async () => {
 
   const passwordHash = await hashPassword('Password123!');
   await User.create({ role: 'owner', tenantId: tenant._id, name: 'Acme Owner', email: 'owner@acme.test', passwordHash });
+  await User.create({ role: 'super_admin', name: 'Root Admin', email: 'root@platform.test', passwordHash });
 
   app = require('../src/app');
 
@@ -55,6 +57,20 @@ beforeAll(async () => {
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'acme.myplatform.test')
       .send({ email: 'owner@acme.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  const rootToken = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Analytics is platform-controlled (see rbac.js / permissions.js) — only
+  // reachable via Super Admin's "Login As Client" impersonation.
+  impersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${tenant._id}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
   ).body.data.accessToken;
 
   const catRes = await request(app)
@@ -187,12 +203,15 @@ describe('Analytics endpoints', () => {
     expect(res.status).toBe(202);
   });
 
-  test('owner can fetch the aggregated analytics summary', async () => {
-    const res = await admin(request(app).get('/api/v1/client-admin/analytics/summary')).query({
-      granularity: 'daily',
-      startDate: periodStart.toISOString(),
-      endDate: periodEnd.toISOString(),
-    });
+  test('owner can fetch the aggregated analytics summary via impersonation', async () => {
+    const res = await request(app)
+      .get('/api/v1/client-admin/analytics/summary')
+      .set('Authorization', `Bearer ${impersonationToken}`)
+      .query({
+        granularity: 'daily',
+        startDate: periodStart.toISOString(),
+        endDate: periodEnd.toISOString(),
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.data.orderMetrics.totalOrders).toBe(1);

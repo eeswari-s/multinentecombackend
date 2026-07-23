@@ -9,6 +9,8 @@ const { documentIdParamsSchema, reportQuerySchema } = require('../../../validato
 
 const router = Router();
 
+// Reports are platform-controlled — only reachable via Super Admin's
+// "Login As Client" impersonation (see rbac.js requirePermission's bypass).
 router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('reports:read'));
 
 router.post('/sales', validateRequest({ query: reportQuerySchema }), controller.salesReport);

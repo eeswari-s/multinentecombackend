@@ -21,6 +21,7 @@ let acmeProductB; // second product, same category, for "similar products"
 let globexOwnerToken;
 let globexCustomerToken;
 let globexCategoryId;
+let acmeImpersonationToken;
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
@@ -48,6 +49,7 @@ beforeAll(async () => {
   const passwordHash = await hashPassword('Password123!');
   await User.create({ role: 'owner', tenantId: acme._id, name: 'Acme Owner', email: 'owner@acme.test', passwordHash });
   await User.create({ role: 'owner', tenantId: globex._id, name: 'Globex Owner', email: 'owner@globex.test', passwordHash });
+  await User.create({ role: 'super_admin', name: 'Root Admin', email: 'root@platform.test', passwordHash });
 
   app = require('../src/app');
   await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
@@ -63,6 +65,20 @@ beforeAll(async () => {
       .post('/api/v1/client-admin/auth/login')
       .set('Host', 'globex.myplatform.test')
       .send({ email: 'owner@globex.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  const rootToken = (
+    await request(app)
+      .post('/api/v1/super-admin/auth/login')
+      .send({ email: 'root@platform.test', password: 'Password123!' })
+  ).body.data.accessToken;
+
+  // Blog is platform-controlled (see rbac.js / permissions.js) — only
+  // reachable via Super Admin's "Login As Client" impersonation.
+  acmeImpersonationToken = (
+    await request(app)
+      .post(`/api/v1/super-admin/clients/${acme._id}/login-as`)
+      .set('Authorization', `Bearer ${rootToken}`)
   ).body.data.accessToken;
 
   await request(app)
@@ -122,6 +138,9 @@ function acmeAdmin(req) {
 }
 function globexAdmin(req) {
   return req.set('Authorization', `Bearer ${globexOwnerToken}`);
+}
+function acmeImpersonating(req) {
+  return req.set('Authorization', `Bearer ${acmeImpersonationToken}`);
 }
 function acmeCustomer(req) {
   return req.set('Host', 'acme.myplatform.test').set('Authorization', `Bearer ${acmeCustomerToken}`);
@@ -447,7 +466,7 @@ describe('Blog', () => {
   let postSlug;
 
   test('draft posts are not visible to customers', async () => {
-    const createRes = await acmeAdmin(request(app).post('/api/v1/client-admin/blog')).send({
+    const createRes = await acmeImpersonating(request(app).post('/api/v1/client-admin/blog')).send({
       title: 'Our New Arrivals',
       content: '<p>Check out our new arrivals!</p>',
       status: 'draft',
@@ -461,7 +480,7 @@ describe('Blog', () => {
   });
 
   test('publishing makes it visible to customers by slug', async () => {
-    await acmeAdmin(request(app).patch(`/api/v1/client-admin/blog/${postId}`)).send({ status: 'published' });
+    await acmeImpersonating(request(app).patch(`/api/v1/client-admin/blog/${postId}`)).send({ status: 'published' });
 
     const res = await request(app).get(`/api/v1/customer/blog/${postSlug}`).set('Host', 'acme.myplatform.test');
     expect(res.status).toBe(200);

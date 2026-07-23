@@ -10,16 +10,35 @@ const { setCustomDomainSchema } = require('../../../validators/customDomain.vali
 
 const router = Router();
 
-router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth, requirePermission('settings:manage'));
+router.use(authenticate, requirePersona('admin'), resolveTenantFromAuth);
 
-router.get('/branding', controller.getBranding);
-router.put('/branding', upload.single('logo'), validateRequest({ body: updateBrandingSchema }), controller.updateBranding);
-router.get('/shipping', controller.getShipping);
-router.put('/shipping', validateRequest({ body: updateShippingSettingsSchema }), controller.updateShipping);
+// Branding and custom domain are platform-controlled — only reachable via
+// Super Admin's "Login As Client" impersonation (see rbac.js). Shipping
+// stays with the tenant.
+router.get('/branding', requirePermission('settings:branding'), controller.getBranding);
+router.put(
+  '/branding',
+  requirePermission('settings:branding'),
+  upload.single('logo'),
+  validateRequest({ body: updateBrandingSchema }),
+  controller.updateBranding
+);
+router.get('/shipping', requirePermission('settings:shipping'), controller.getShipping);
+router.put(
+  '/shipping',
+  requirePermission('settings:shipping'),
+  validateRequest({ body: updateShippingSettingsSchema }),
+  controller.updateShipping
+);
 
-router.get('/custom-domain', controller.getCustomDomain);
-router.post('/custom-domain', validateRequest({ body: setCustomDomainSchema }), controller.setCustomDomain);
-router.post('/custom-domain/verify', controller.verifyCustomDomain);
-router.delete('/custom-domain', controller.removeCustomDomain);
+router.get('/custom-domain', requirePermission('settings:domain'), controller.getCustomDomain);
+router.post(
+  '/custom-domain',
+  requirePermission('settings:domain'),
+  validateRequest({ body: setCustomDomainSchema }),
+  controller.setCustomDomain
+);
+router.post('/custom-domain/verify', requirePermission('settings:domain'), controller.verifyCustomDomain);
+router.delete('/custom-domain', requirePermission('settings:domain'), controller.removeCustomDomain);
 
 module.exports = router;

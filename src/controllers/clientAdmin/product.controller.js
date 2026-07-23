@@ -5,8 +5,25 @@ const productService = require('../../services/clientAdmin/productService');
 
 const actorFrom = (req) => ({ userId: req.auth.userId, email: req.auth.email });
 
+/**
+ * SEO metadata is platform-controlled — a tenant's own login can create/edit
+ * everything else about a product (including GST/tax), but `seo.*` only
+ * takes effect when the request comes through Super Admin's "Login As
+ * Client" impersonation (see rbac.js requirePermission's bypass). Silently
+ * dropped rather than rejected so the same product form works unmodified
+ * for both sessions.
+ */
+const stripPlatformControlledFields = (req, body) => {
+  if (req.auth.impersonation?.active) return body;
+  const { seo, ...rest } = body;
+  return rest;
+};
+
 const create = asyncHandler(async (req, res) => {
-  const product = await productService.createProduct({ ...req.body, actor: actorFrom(req) });
+  const product = await productService.createProduct({
+    ...stripPlatformControlledFields(req, req.body),
+    actor: actorFrom(req),
+  });
   sendSuccess(res, { statusCode: 201, message: 'Product created', data: product });
 });
 
@@ -23,7 +40,7 @@ const getOne = asyncHandler(async (req, res) => {
 const update = asyncHandler(async (req, res) => {
   const product = await productService.updateProduct({
     id: req.params.id,
-    updates: req.body,
+    updates: stripPlatformControlledFields(req, req.body),
     actor: actorFrom(req),
   });
   sendSuccess(res, { message: 'Product updated', data: product });
